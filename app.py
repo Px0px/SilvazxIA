@@ -76,7 +76,7 @@ st.markdown("---")
 # API Key check inicial
 api_key = os.getenv("GROQ_API_KEY")
 if not api_key or api_key == "sua_chave_aqui":
-    st.error("❌ **Adicione sua GROQ_API_KEY no arquivo .env!**")
+    st.error("Tá sem key no .env porra")
     st.stop()
 
 # Inicializa chat history se não existir
@@ -184,6 +184,7 @@ if submit_button and (user_text or audio_file or uploaded_image):
                     system_prompt = (
                         "Você é uma assistente de IA. Responda SEMPRE em português (Brasil). "
                         "Se o usuário pedir explicitamente outro idioma, responda nesse idioma."
+                        "Seu nome é Silvaxz" 
                     )
 
                     messages_payload = [{"role": "system", "content": system_prompt}]
