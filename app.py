@@ -2,211 +2,230 @@ import streamlit as st
 import os
 from dotenv import load_dotenv
 from groq import Groq
-import time
+import base64
 
 # Carrega variáveis de ambiente
 load_dotenv()
 
 # Configuração da página
-st.set_page_config(page_title="Silvazx IA ", page_icon="🤖", layout="wide")
+st.set_page_config(page_title="Silvazx IA", page_icon="🤖", layout="wide")
 
-st.title("🤖 Silvazx IA")
+# --- UI/Theme Otimizado ---
+st.markdown(
+    """
+    <style>
+      :root{
+        --bg0:#07090f;
+        --bg1:#0b1220;
+        --card:#0f172a;
+        --text:#e5e7eb;
+        --border:rgba(255,255,255,.08);
+        --shadow: 0 18px 50px rgba(0,0,0,.45);
+      }
+      html, body { 
+        background: radial-gradient(1000px 600px at 20% 0%, rgba(255,255,255,.06), transparent 55%),
+                   radial-gradient(900px 500px at 90% 10%, rgba(255,255,255,.03), transparent 50%),
+                   linear-gradient(180deg, var(--bg0), var(--bg1)); 
+      }
+      .block-container{ padding-top: 18px; padding-bottom: 120px; }
+      .stApp{ color: var(--text); }
+      
+      /* Chat messages */
+      [data-testid="stChatMessage"]{
+        border-radius: 16px;
+        padding: 10px 12px;
+        border: 1px solid rgba(255,255,255,.06);
+        background: rgba(2,6,23,.25);
+        margin-bottom: 5px;
+      }
+      
+      div[data-baseweb="select"], input, textarea {
+        background: rgba(2,6,23,.45) !important;
+        border: 1px solid var(--border) !important;
+        border-radius: 12px !important;
+        color: var(--text) !important;
+      }
+      
+      .stButton>button{
+        background: linear-gradient(135deg, rgba(255,255,255,.10), rgba(255,255,255,.04)) !important;
+        border: 1px solid rgba(255,255,255,.16) !important;
+        color: #fff !important;
+        font-weight: 650 !important;
+        border-radius: 12px !important;
+      }
+      .stButton>button:hover{ filter: brightness(1.05); }
+      hr{ border-color: rgba(255,255,255,.10) !important; }
+      
+      /* Ajuste fino para os botões de popover ficarem discretos abaixo da mensagem */
+      div[data-testid="stPopover"] button {
+        background: transparent !important;
+        border: 1px solid rgba(255,255,255,0.15) !important;
+        color: #9ca3af !important;
+        padding: 2px 10px !important;
+        font-size: 12px !important;
+        height: auto !important;
+      }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+st.title("Silvazx IA")
 st.markdown("---")
 
-# Sidebar para configurações
-with st.sidebar:
-    st.header("Configurações")
+# API Key check inicial
+api_key = os.getenv("GROQ_API_KEY")
+if not api_key or api_key == "sua_chave_aqui":
+    st.error("❌ **Adicione sua GROQ_API_KEY no arquivo .env!**")
+    st.stop()
 
-    models = [
-        "llama-3.1-8b-instant",
-        # transcrição (whisper-large-v3-turbo) via upload, fora do modelo do chat
-        "meta-llama/llama-4-scout-17b-16e-instruct",
-        "openai/gpt-oss-120b",
-    ]
-
-
-
-    selected_model = st.selectbox("Modelo:", models, index=0)
-
-    st.caption("Dica: transcrição de áudio usa whisper-large-v3-turbo.")
-
-
-# Inicializa chat history
+# Inicializa chat history se não existir
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Utilitário: copiar texto para área de transferência (browser)
-def render_copy_button(text: str, button_label: str = "Copiar resposta"):
-    # Observação: precisa de componente HTML para copiar no navegador.
-    # Também usa um id único para evitar conflitos entre múltiplas mensagens.
-    import uuid
-    btn_id = f"copy_{uuid.uuid4().hex}"
-    safe_text = text.replace("\\", "\\\\").replace("\"", "\\\"")
-    st.markdown(
-        f"""
-        <div style="display:flex; align-items:center; gap:10px; margin-top:6px; margin-bottom:10px;">
-          <button id="{btn_id}" type="button" style="
-              border:1px solid #444; background:#111; color:#fff; padding:6px 10px; border-radius:8px;
-              cursor:pointer; font-size:0.9rem;">
-            {button_label}
-          </button>
-          <span id="{btn_id}_status" style="font-size:0.85rem; opacity:0.8;"></span>
-        </div>
-        <script>
-          const btn = document.getElementById('{btn_id}');
-          const statusEl = document.getElementById('{btn_id}_status');
-          if (btn) {{
-            btn.addEventListener('click', async () => {{
-              try {{
-                await navigator.clipboard.writeText("{safe_text}");
-                if (statusEl) statusEl.textContent = 'Copiado!';
-              }} catch (e) {{
-                if (statusEl) statusEl.textContent = 'Falha ao copiar';
-              }}
-            }});
-          }}
-        </script>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-# Exibe histórico de chat
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
-        if message["role"] == "assistant":
-            render_copy_button(message["content"], button_label="Copiar resposta")
-
-
-# API Key check
-api_key = os.getenv("GROQ_API_KEY")
-if not api_key or api_key == "sua_chave_aqui":
-    st.error("❌ **Adicione sua GROQ_API_KEY no arquivo .env!** Pegue em https://console.groq.com/keys")
-    st.stop()
-
-# --------- Transcrição de áudio (uploader) ---------
-st.subheader("🎙️ Transcrever áudio")
-audio_file = st.file_uploader(
-    "Envie um arquivo de áudio (ex: m4a/wav)",
-    type=["m4a", "wav", "mp3", "ogg", "webm"],
-)
-
-transcript_text = ""
-
-if audio_file is not None:
-    client = Groq(api_key=api_key)
-    try:
-        transcription = client.audio.transcriptions.create(
-            file=(audio_file.name, audio_file.read()),
-            model="whisper-large-v3-turbo",
-            temperature=0,
-            response_format="verbose_json",
-        )
-        transcript_text = getattr(transcription, "text", "") or ""
-        st.text_area("Texto transcrito", value=transcript_text, height=140)
-
-        if st.button("Usar transcrição como prompt", use_container_width=True):
-            st.session_state.messages.append({"role": "user", "content": transcript_text})
-            with st.chat_message("user"):
-                st.markdown(transcript_text)
-
-    except Exception as e:
-        st.error(f"Erro ao transcrever: {str(e)}")
-
-# --------- Campo de input do usuário (texto + foto) ---------
-with st.container():
-    uploaded_image = st.file_uploader(
-        "Envie uma imagem (opcional)",
-        type=["png", "jpg", "jpeg", "webp"],
-        key="image_uploader",
-    )
-
-    col_text, col_btn = st.columns([6, 1])
-    with col_text:
-        prompt = st.chat_input("Digite sua mensagem...")
-    with col_btn:
-        send = st.button("Enviar", use_container_width=True)
-
-if (prompt is not None and prompt != "") or send:
-    # Se usuário clicou enviar sem texto, ainda assim enviar prompt vazio
-    if prompt is None:
-        prompt = ""
-
-
-
-    # Adiciona mensagem do user
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
-        st.markdown(prompt)
-
-    # Mensagem assistente placeholder para streaming
-    with st.chat_message("assistant"):
-        stream = st.empty()
-        full_response = ""
-
-
-        # Cliente Groq
-        client = Groq(api_key=api_key)
-
-        try:
-            # Stream de resposta
-            # Força idioma: sempre responder em PT-BR, salvo se o usuário pedir outro idioma.
-            system_prompt = (
-                "Você é uma assistente de IA. "
-                "Responda SEMPRE em português (Brasil). "
-                "Se o usuário pedir explicitamente outro idioma, responda nesse idioma. "
-                "Caso contrário, mantenha a resposta em português (Brasil)."
-            )
-
-            messages_payload = [{"role": "system", "content": system_prompt}] + [
-                {"role": m["role"], "content": m["content"]} for m in st.session_state.messages
-            ]
-
-
-            # Se o usuário enviou imagem, anexamos como "image_url" (visão) quando o modelo suportar.
-            # (Alguns modelos podem exigir formato específico; este é o padrão do Groq/OpenAI para multimodal).
-            if uploaded_image is not None and prompt is not None and prompt != "":
-                image_bytes = uploaded_image.read()
-                import base64
-                b64 = base64.b64encode(image_bytes).decode("utf-8")
-                mime = uploaded_image.type or "image/png"
-                data_url = f"data:{mime};base64,{b64}"
-
-                messages_payload = [
-                    {"role": "user", "content": [
-                        {"type": "text", "text": prompt},
-                        {"type": "image_url", "image_url": {"url": data_url}},
-                    ]}
-                ]
-
-            for chunk in client.chat.completions.create(
-                model=selected_model,
-                messages=messages_payload,
-                temperature=0.7,
-                max_tokens=2048,
-                stream=True,
-            ):
-                if chunk.choices[0].delta.content is not None:
-                    full_response += chunk.choices[0].delta.content
-                    stream.markdown(full_response + "▌")
-            stream.markdown(full_response)
-        except Exception as e:
-            st.error(f"Erro na API: {str(e)}")
-
-
-    # Salva resposta no histórico
-    st.session_state.messages.append({"role": "assistant", "content": full_response})
-
-# Botões de controle
-col1, col2 = st.columns(2)
-with col1:
+# --- SIDEBAR ---
+with st.sidebar:
+    st.header("⚙️ Configurações")
+    models = [
+        "meta-llama/llama-4-scout-17b-16e-instruct",
+        "llama-3.1-8b-instant",
+        "openai/gpt-oss-120b",
+    ]
+    selected_model = st.selectbox("Modelo:", models, index=0)
+    
+    st.markdown("---")
     if st.button("Limpar Chat", use_container_width=True):
         st.session_state.messages = []
         st.rerun()
-with col2:
     if st.button("Novo Chat", use_container_width=True):
         st.session_state.messages = []
         st.rerun()
 
+# --- CORPO PRINCIPAL: Histórico de Conversas ---
+chat_container = st.container()
+with chat_container:
+    for index, message in enumerate(st.session_state.messages):
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+            # Copiar do histórico usando Popover flutuante (Evita a duplicação na tela principal)
+            if message["role"] == "assistant":
+                with st.popover("📋 Copiar resposta"):
+                    st.code(message["content"], language="text")
+
 st.markdown("---")
+
+# --- BARRA DE INPUT ESTILO "+" (RODAPÉ) ---
+with st.container():
+    col_anexo1, col_anexo2 = st.columns(2)
+    with col_anexo1:
+        with st.expander("🎙️ Anexar/Transcrever Áudio", expanded=False):
+            audio_file = st.file_uploader(
+                "Selecione um áudio", 
+                type=["m4a", "wav", "mp3", "ogg", "webm"], 
+                key="audio_input_file",
+                label_visibility="collapsed"
+            )
+    with col_anexo2:
+        with st.expander("🖼️ Anexar Imagem", expanded=False):
+            uploaded_image = st.file_uploader(
+                "Selecione uma imagem", 
+                type=["png", "jpg", "jpeg", "webp"], 
+                key="image_input_file",
+                label_visibility="collapsed"
+            )
+
+    # Formulário de envio unificado
+    with st.form(key="chat_form", clear_on_submit=True):
+        col_text, col_btn = st.columns([6, 1])
+        with col_text:
+            user_text = st.text_input("Digite sua mensagem...", key="text_prompt", label_visibility="collapsed")
+        with col_btn:
+            submit_button = st.form_submit_button(label="Enviar", use_container_width=True)
+
+# --- PROCESSAMENTO LÓGICO ---
+if submit_button and (user_text or audio_file or uploaded_image):
+    prompt_final = user_text
+    
+    if audio_file is not None:
+        client = Groq(api_key=api_key)
+        try:
+            with st.spinner("Transcrevendo áudio gravado..."):
+                audio_bytes = audio_file.read()
+                transcription = client.audio.transcriptions.create(
+                    file=(audio_file.name, audio_bytes),
+                    model="whisper-large-v3-turbo",
+                    temperature=0,
+                    response_format="verbose_json",
+                )
+                transcript_text = getattr(transcription, "text", "") or ""
+                if not prompt_final:
+                    prompt_final = transcript_text
+                else:
+                    prompt_final = f"{prompt_final}\n\n*(Áudio transcrito: {transcript_text})*"
+        except Exception as e:
+            st.error(f"Erro ao processar áudio: {str(e)}")
+
+    if not prompt_final and uploaded_image is not None:
+        prompt_final = "Analise esta imagem."
+
+    if prompt_final:
+        st.session_state.messages.append({"role": "user", "content": prompt_final})
+        
+        with chat_container:
+            with st.chat_message("user"):
+                st.markdown(prompt_final)
+
+            with st.chat_message("assistant"):
+                stream_box = st.empty()
+                full_response = ""
+                client = Groq(api_key=api_key)
+
+                try:
+                    system_prompt = (
+                        "Você é uma assistente de IA. Responda SEMPRE em português (Brasil). "
+                        "Se o usuário pedir explicitamente outro idioma, responda nesse idioma."
+                    )
+
+                    messages_payload = [{"role": "system", "content": system_prompt}]
+                    for m in st.session_state.messages:
+                        messages_payload.append({"role": m["role"], "content": m["content"]})
+
+                    if uploaded_image is not None:
+                        image_bytes = uploaded_image.read()
+                        b64 = base64.b64encode(image_bytes).decode("utf-8")
+                        mime = uploaded_image.type or "image/png"
+                        data_url = f"data:{mime};base64,{b64}"
+
+                        messages_payload[-1] = {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": prompt_final},
+                                {"type": "image_url", "image_url": {"url": data_url}},
+                            ]
+                        }
+
+                    completion = client.chat.completions.create(
+                        model=selected_model,
+                        messages=messages_payload,
+                        temperature=0.7,
+                        max_tokens=2048,
+                        stream=True,
+                    )
+
+                    for chunk in completion:
+                        if chunk.choices[0].delta.content is not None:
+                            full_response += chunk.choices[0].delta.content
+                            stream_box.markdown(full_response + "▌")
+                    
+                    stream_box.markdown(full_response)
+                    
+                    # Cria o popover flutuante de cópia após finalizar o streaming atual
+                    with st.popover("📋 Copiar resposta"):
+                        st.code(full_response, language="text")
+                    
+                    st.session_state.messages.append({"role": "assistant", "content": full_response})
+
+                except Exception as e:
+                    st.error(f"Erro na API Groq: {str(e)}")
+                    
+        st.rerun()
