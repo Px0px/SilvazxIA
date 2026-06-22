@@ -35,10 +35,49 @@ with st.sidebar:
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
+# Utilitário: copiar texto para área de transferência (browser)
+def render_copy_button(text: str, button_label: str = "Copiar resposta"):
+    # Observação: precisa de componente HTML para copiar no navegador.
+    # Também usa um id único para evitar conflitos entre múltiplas mensagens.
+    import uuid
+    btn_id = f"copy_{uuid.uuid4().hex}"
+    safe_text = text.replace("\\", "\\\\").replace("\"", "\\\"")
+    st.markdown(
+        f"""
+        <div style="display:flex; align-items:center; gap:10px; margin-top:6px; margin-bottom:10px;">
+          <button id="{btn_id}" type="button" style="
+              border:1px solid #444; background:#111; color:#fff; padding:6px 10px; border-radius:8px;
+              cursor:pointer; font-size:0.9rem;">
+            {button_label}
+          </button>
+          <span id="{btn_id}_status" style="font-size:0.85rem; opacity:0.8;"></span>
+        </div>
+        <script>
+          const btn = document.getElementById('{btn_id}');
+          const statusEl = document.getElementById('{btn_id}_status');
+          if (btn) {{
+            btn.addEventListener('click', async () => {{
+              try {{
+                await navigator.clipboard.writeText("{safe_text}");
+                if (statusEl) statusEl.textContent = 'Copiado!';
+              }} catch (e) {{
+                if (statusEl) statusEl.textContent = 'Falha ao copiar';
+              }}
+            }});
+          }}
+        </script>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 # Exibe histórico de chat
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
+        if message["role"] == "assistant":
+            render_copy_button(message["content"], button_label="Copiar resposta")
+
 
 # API Key check
 api_key = os.getenv("GROQ_API_KEY")
