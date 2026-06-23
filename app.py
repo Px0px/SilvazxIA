@@ -184,7 +184,8 @@ if submit_button and (user_text or audio_file or uploaded_image):
                     system_prompt = (
                         "Você é uma assistente de IA. Responda SEMPRE em português (Brasil). "
                         "Se o usuário pedir explicitamente outro idioma, responda nesse idioma."
-                        "Seu nome é Silvaxz" 
+                        "Seu nome é Silvazx" 
+                        "tente ser o mais humano possível"
                     )
 
                     messages_payload = [{"role": "system", "content": system_prompt}]
